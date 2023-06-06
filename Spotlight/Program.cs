@@ -1,5 +1,7 @@
-﻿using System.Runtime.InteropServices;
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
+using Newtonsoft.Json;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 
 class Program
 {
@@ -21,11 +23,13 @@ class Program
                 if (currentWallpaperPath == null || currentWallpaperPath != todayWallpaperPath)
                 {
                     SetWallpaper(todayWallpaperPath);
-                    Console.WriteLine("壁纸设置成功！壁纸文件路径：" + todayWallpaperPath);
+                    Console.WriteLine($"壁纸设置成功！壁纸文件路径: {todayWallpaperPath}");
+                    ShowWallpaperInfo();
                 }
                 else
                 {
                     Console.WriteLine("今天已经设置过壁纸啦！壁纸文件路径：" + todayWallpaperPath);
+                    ShowWallpaperInfo();
                 }
                 isRetry = false;
             }
@@ -36,7 +40,7 @@ class Program
                 Console.Write("按Q键退出，按其他键重试：");
                 if (Console.ReadKey().Key == ConsoleKey.Q)
                 {
-                    Console.WriteLine("\n今日壁纸获取失败，不更新壁纸。壁纸文件路径：" + currentWallpaperPath);
+                    Console.WriteLine("\n今日壁纸获取失败，不更新壁纸。当前壁纸文件路径：" + currentWallpaperPath);
                     return;
                 }
                 Console.WriteLine();
@@ -45,6 +49,14 @@ class Program
         
         Console.Write("按任意键结束。");
         Console.ReadKey();
+    }
+
+    static void ShowWallpaperInfo()
+    {
+        string wallpaperDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "SpotlightWallpapers");
+        string wallpaperMetadataPath = Path.Combine(wallpaperDirectory, $"{DateTime.Now:yyyyMMdd}.txt");
+        string[] info = File.ReadAllLines(wallpaperMetadataPath);
+        Console.WriteLine($"今天的壁纸是{info[0]}\n{info[2]}\n{info[3]}");
     }
 
     // 获取当前壁纸的路径
@@ -62,8 +74,19 @@ class Program
     {
         // 构造今天壁纸的文件名（格式为 yyyymmdd.jpg）
         string todayWallpaperFileName = $"{DateTime.Now:yyyyMMdd}.jpg";
-        // 构造今天壁纸的保存路径（位于用户图片文件夹下的 BingWallpapers 文件夹中）
-        string todayWallpaperPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "SpotlightWallpapers", todayWallpaperFileName);
+        string wallpaperMetadataFileName = $"{DateTime.Now:yyyyMMdd}.txt";
+
+        // 构造壁纸保存的目录（位于用户图片文件夹下的 SpotlightWallpapers 文件夹中）
+        string wallpaperDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "SpotlightWallpapers");
+        // 如果目录不存在，则创建目录
+        if (!Directory.Exists(wallpaperDirectory))
+        {
+            Directory.CreateDirectory(wallpaperDirectory);
+        }
+
+        // 构造今天壁纸的保存路径
+        string todayWallpaperPath = Path.Combine(wallpaperDirectory, todayWallpaperFileName);
+        string wallpaperMetadataPath = Path.Combine(wallpaperDirectory, wallpaperMetadataFileName);
 
         // 如果已经下载了今天的壁纸，则直接返回该壁纸的路径
         if (File.Exists(todayWallpaperPath))
@@ -76,29 +99,38 @@ class Program
             // 创建一个 HttpClient 实例
             using (var httpClient = new HttpClient())
             {
-                // 发送 GET 请求以下载今天的壁纸
-                HttpResponseMessage response = await httpClient.GetAsync("https://api.qzink.me/spotlight?orientation=landscape");
-
-                // 如果下载成功，则将壁纸保存到本地并返回壁纸的路径
-                if (response.IsSuccessStatusCode)
+                bool isDuplicate = true;
+                while (isDuplicate)
                 {
-                    // 读取响应内容的二进制数据
-                    byte[] imageData = await response.Content.ReadAsByteArrayAsync();
+                    // 发送 GET 请求获取壁纸信息
+                    HttpResponseMessage response = await httpClient.GetAsync("https://api.qzink.me/spotlight");
 
-                    // 构造壁纸保存的目录
-                    string todayWallpaperDirectory = Path.GetDirectoryName(todayWallpaperPath);
-
-                    // 如果目录不存在，则创建目录
-                    if (!Directory.Exists(todayWallpaperDirectory))
+                    if (response.IsSuccessStatusCode)
                     {
-                        Directory.CreateDirectory(todayWallpaperDirectory);
+                        string jsonString = await response.Content.ReadAsStringAsync();
+                        // 壁纸信息
+                        dynamic imageInfo = JsonConvert.DeserializeObject(jsonString);
+
+                        // 检查壁纸是否重复
+                        if(IsImageDuplicate(wallpaperDirectory, imageInfo.landscape_sha256.ToString()))
+                        {
+                            continue;
+                        }
+                        isDuplicate = false;
+
+                        // 构造元信息
+                        string metadata = $"{imageInfo.title}\n{imageInfo.copyright}\n横向壁纸地址: {imageInfo.landscape_url}\n竖向壁纸地址: {imageInfo.portrait_url}";
+                        // 下载壁纸图片
+                        byte[] imageData = await httpClient.GetByteArrayAsync(imageInfo.landscape_url.ToString());
+
+                        // 保存元信息
+                        File.WriteAllText(wallpaperMetadataPath, metadata);
+                        // 将壁纸保存到本地
+                        File.WriteAllBytes(todayWallpaperPath, imageData);
+
+                        // 返回壁纸的路径
+                        return todayWallpaperPath;
                     }
-
-                    // 将壁纸保存到本地
-                    File.WriteAllBytes(todayWallpaperPath, imageData);
-
-                    // 返回壁纸的路径
-                    return todayWallpaperPath;
                 }
             }
         }
@@ -138,6 +170,35 @@ class Program
         if (!result)
         {
             throw new Exception("Failed to set wallpaper.");
+        }
+    }
+
+    // 检查壁纸是否重复
+    static bool IsImageDuplicate(string path, string sha256)
+    {
+        string[] images = Directory.GetFiles(path, "*.jpg", SearchOption.AllDirectories);
+
+        foreach (string image in images)
+        {
+            byte[] imageData = File.ReadAllBytes(image);
+            string imageSHA256 = GetSHA256(imageData);
+
+            if (imageSHA256.Equals(sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // 获取文件SHA256
+    static string GetSHA256(byte[] data)
+    {
+        using (SHA256 sha256 = SHA256.Create())
+        {
+            byte[] hashBytes = sha256.ComputeHash(data);
+            return BitConverter.ToString(hashBytes).Replace("-", string.Empty);
         }
     }
 
