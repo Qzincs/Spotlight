@@ -120,8 +120,10 @@ class Program
 
                         // 构造元信息
                         string metadata = $"{imageInfo.title}\n{imageInfo.copyright}\n横向壁纸地址: {imageInfo.landscape_url}\n竖向壁纸地址: {imageInfo.portrait_url}";
+
                         // 下载壁纸图片
-                        byte[] imageData = await httpClient.GetByteArrayAsync(imageInfo.landscape_url.ToString());
+                        HttpResponseMessage imageResponse = await httpClient.GetAsync(imageInfo.landscape_url.ToString());
+                        byte[] imageData = await imageResponse.Content.ReadAsByteArrayAsync();
 
                         // 保存元信息
                         File.WriteAllText(wallpaperMetadataPath, metadata);
