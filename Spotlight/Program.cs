@@ -1,5 +1,7 @@
 ﻿using Microsoft.Win32;
 using Newtonsoft.Json;
+using Spotlight;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
@@ -10,11 +12,12 @@ class Program
         bool isRetry = true;
         while (isRetry)
         {
+            Wallpaper wallpaper = new Wallpaper();
             // 获取当前壁纸的路径
             string currentWallpaperPath = GetCurrentWallpaperPath();
-
+            
             // 下载或检查是否已经下载了今天的壁纸
-            string todayWallpaperPath = await DownloadTodayWallpaper();
+            string todayWallpaperPath = await DownloadTodayWallpaper(wallpaper);
 
             // 如果下载成功，则设置为桌面壁纸
             if (todayWallpaperPath != null)
@@ -64,13 +67,13 @@ class Program
     {
         // 打开注册表项 HKEY_CURRENT_USER\Control Panel\Desktop
         RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop", false);
-        // 获取名为 "Wallpaper" 的键的值（即当前壁纸的路径）
+        // 获取当前壁纸的路径
         string wallpaperPath = key.GetValue("Wallpaper") as string;
         return wallpaperPath;
     }
 
     // 下载或检查是否已经下载了今天的壁纸
-    static async Task<string> DownloadTodayWallpaper()
+    static async Task<string> DownloadTodayWallpaper(Wallpaper wallpaper)
     {
         // 构造今天壁纸的文件名（格式为 yyyymmdd.jpg）
         string todayWallpaperFileName = $"{DateTime.Now:yyyyMMdd}.jpg";
@@ -102,37 +105,51 @@ class Program
                 bool isDuplicate = true;
                 while (isDuplicate)
                 {
-                    // 发送 GET 请求获取壁纸信息
-                    HttpResponseMessage response = await httpClient.GetAsync("https://api.qzink.me/spotlight");
+                     string apiUrl = "https://arc.msn.com/v3/Delivery/Placement?pid=209567&fmt=json&cdm=1&pl=zh-CN&lc=zh-CN&ctry=CN";
+
+
+                    HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
 
                     if (response.IsSuccessStatusCode)
                     {
                         string jsonString = await response.Content.ReadAsStringAsync();
                         // 壁纸信息
-                        dynamic imageInfo = JsonConvert.DeserializeObject(jsonString);
+                        dynamic responseData = JsonConvert.DeserializeObject(jsonString);
+                        string imageJsonString = responseData.batchrsp.items[1].item;
+                        imageJsonString = imageJsonString.Replace("\\\"", "\"");
+                        dynamic image = JsonConvert.DeserializeObject(imageJsonString);
+                        image = image.ad;
 
-                        // 检查壁纸是否重复
-                        if(IsImageDuplicate(wallpaperDirectory, imageInfo.landscape_sha256.ToString()))
-                        {
-                            continue;
-                        }
-                        isDuplicate = false;
 
-                        // 构造元信息
-                        string metadata = $"{imageInfo.title}\n{imageInfo.copyright}\n横向壁纸地址: {imageInfo.landscape_url}\n竖向壁纸地址: {imageInfo.portrait_url}";
-
-                        // 下载壁纸图片
-                        HttpResponseMessage imageResponse = await httpClient.GetAsync(imageInfo.landscape_url.ToString());
-                        byte[] imageData = await imageResponse.Content.ReadAsByteArrayAsync();
-
-                        // 保存元信息
-                        File.WriteAllText(wallpaperMetadataPath, metadata);
-                        // 将壁纸保存到本地
-                        File.WriteAllBytes(todayWallpaperPath, imageData);
-
-                        // 返回壁纸的路径
-                        return todayWallpaperPath;
+                        wallpaper.title = image.title_text.tx;
+                        wallpaper.copyright = image.copyright_text.tx;
+                        wallpaper.landscapeUrl = image.image_fullscreen_001_landscape.u;
+                        wallpaper.landscapeSha256 = image.image_fullscreen_001_landscape.sha256;
+                        wallpaper.portraitUrl = image.image_fullscreen_001_portrait.u;
+                        wallpaper.portraitSha256 = image.image_fullscreen_001_portrait.sha256;
                     }
+                    
+                    // 检查壁纸是否重复
+                    if (IsImageDuplicate(wallpaperDirectory, wallpaper.landscapeSha256))
+                    {
+                        continue;
+                    }
+                    isDuplicate = false;
+
+                    // 构造元信息
+                    string metadata = $"{wallpaper.title}\n{wallpaper.copyright}\n横向壁纸地址: {wallpaper.landscapeUrl}\n竖向壁纸地址: {wallpaper.portraitUrl}";
+
+                    // 下载壁纸图片
+                    HttpResponseMessage imageResponse = await httpClient.GetAsync(wallpaper.landscapeUrl);
+                    byte[] imageData = await imageResponse.Content.ReadAsByteArrayAsync();
+
+                    // 保存元信息
+                    File.WriteAllText(wallpaperMetadataPath, metadata);
+                    // 将壁纸保存到本地
+                    File.WriteAllBytes(todayWallpaperPath, imageData);
+
+                    // 返回壁纸的路径
+                    return todayWallpaperPath;
                 }
             }
         }
@@ -144,6 +161,36 @@ class Program
 
         // 下载失败，返回 null
         return null;
+    }
+
+    static async void ParseWallpaperJson(Wallpaper wallpaper)
+    {
+        string apiUrl = "https://arc.msn.com/v3/Delivery/Placement?pid=209567&fmt=json&cdm=1&pl=zh-CN&lc=zh-CN&ctry=CN";
+
+            using(var httpClient = new HttpClient())
+            {
+                HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string jsonString = await response.Content.ReadAsStringAsync();
+                    // 壁纸信息
+                    dynamic responseData = JsonConvert.DeserializeObject(jsonString);
+                    string imageJsonString = responseData.batchrsp.items[1].item;
+                    imageJsonString = imageJsonString.Replace("\\\"", "\"");
+                    dynamic imageData = JsonConvert.DeserializeObject(imageJsonString);
+                    imageData = imageData.ad;
+
+                    
+                    wallpaper.title = imageData.title_text.tx;
+                    wallpaper.copyright = imageData.copyright_text.tx;
+                    wallpaper.landscapeUrl = imageData.image_fullscreen_001_landscape.u;
+                    wallpaper.landscapeSha256 = imageData.image_fullscreen_001_landscape.sha256;
+                    wallpaper.portraitUrl = imageData.image_fullscreen_001_portrait.u;
+                    wallpaper.portraitSha256 = imageData.image_fullscreen_001_portrait.sha256;
+                }
+            }
+        
     }
 
     // 设置桌面壁纸
