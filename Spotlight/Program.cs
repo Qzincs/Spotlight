@@ -124,9 +124,9 @@ class Program
                         wallpaper.title = image.title_text.tx;
                         wallpaper.copyright = image.copyright_text.tx;
                         wallpaper.landscapeUrl = image.image_fullscreen_001_landscape.u;
-                        wallpaper.landscapeSha256 = image.image_fullscreen_001_landscape.sha256;
+                        wallpaper.landscapeSha256 = BitConverter.ToString(Convert.FromBase64String(image.image_fullscreen_001_landscape.sha256.ToString())).Replace("-", "");
                         wallpaper.portraitUrl = image.image_fullscreen_001_portrait.u;
-                        wallpaper.portraitSha256 = image.image_fullscreen_001_portrait.sha256;
+                        wallpaper.portraitSha256 = BitConverter.ToString(Convert.FromBase64String(image.image_fullscreen_001_portrait.sha256.ToString())).Replace("-", "");
                     }
                     
                     // 检查壁纸是否重复
@@ -161,36 +161,6 @@ class Program
 
         // 下载失败，返回 null
         return null;
-    }
-
-    static async void ParseWallpaperJson(Wallpaper wallpaper)
-    {
-        string apiUrl = "https://arc.msn.com/v3/Delivery/Placement?pid=209567&fmt=json&cdm=1&pl=zh-CN&lc=zh-CN&ctry=CN";
-
-            using(var httpClient = new HttpClient())
-            {
-                HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    string jsonString = await response.Content.ReadAsStringAsync();
-                    // 壁纸信息
-                    dynamic responseData = JsonConvert.DeserializeObject(jsonString);
-                    string imageJsonString = responseData.batchrsp.items[1].item;
-                    imageJsonString = imageJsonString.Replace("\\\"", "\"");
-                    dynamic imageData = JsonConvert.DeserializeObject(imageJsonString);
-                    imageData = imageData.ad;
-
-                    
-                    wallpaper.title = imageData.title_text.tx;
-                    wallpaper.copyright = imageData.copyright_text.tx;
-                    wallpaper.landscapeUrl = imageData.image_fullscreen_001_landscape.u;
-                    wallpaper.landscapeSha256 = imageData.image_fullscreen_001_landscape.sha256;
-                    wallpaper.portraitUrl = imageData.image_fullscreen_001_portrait.u;
-                    wallpaper.portraitSha256 = imageData.image_fullscreen_001_portrait.sha256;
-                }
-            }
-        
     }
 
     // 设置桌面壁纸
