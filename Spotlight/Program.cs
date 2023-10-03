@@ -115,7 +115,7 @@ class Program
                         string jsonString = await response.Content.ReadAsStringAsync();
                         // 壁纸信息
                         dynamic responseData = JsonConvert.DeserializeObject(jsonString);
-                        string imageJsonString = responseData.batchrsp.items[1].item;
+                        string imageJsonString = responseData.batchrsp.items[0].item;
                         imageJsonString = imageJsonString.Replace("\\\"", "\"");
                         dynamic image = JsonConvert.DeserializeObject(imageJsonString);
                         image = image.ad;
