@@ -18,7 +18,7 @@
 
 <PropertyGroup>
 	<PackageId>Spotlight</PackageId>
-	<Version>0.1.2</Version>
+	<Version>0.1.3</Version>
 	<Authors>Qzink</Authors>
 	<Description>下载并设置Windows聚焦图片为壁纸</Description>
 </PropertyGroup>

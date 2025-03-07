@@ -105,7 +105,7 @@ class Program
                 bool isDuplicate = true;
                 while (isDuplicate)
                 {
-                     string apiUrl = "https://arc.msn.com/v3/Delivery/Placement?pid=209567&fmt=json&cdm=1&pl=zh-CN&lc=zh-CN&ctry=CN";
+                     string apiUrl = "https://fd.api.iris.microsoft.com/v4/api/selection?&placement=88000820&bcnt=4&country=CN&locale=zh-CN&fmt=json";
 
 
                     HttpResponseMessage response = await httpClient.GetAsync(apiUrl);
@@ -121,20 +121,11 @@ class Program
                         image = image.ad;
 
 
-                        wallpaper.title = image.title_text.tx;
-                        wallpaper.copyright = image.copyright_text.tx;
-                        wallpaper.landscapeUrl = image.image_fullscreen_001_landscape.u;
-                        wallpaper.landscapeSha256 = BitConverter.ToString(Convert.FromBase64String(image.image_fullscreen_001_landscape.sha256.ToString())).Replace("-", "");
-                        wallpaper.portraitUrl = image.image_fullscreen_001_portrait.u;
-                        wallpaper.portraitSha256 = BitConverter.ToString(Convert.FromBase64String(image.image_fullscreen_001_portrait.sha256.ToString())).Replace("-", "");
+                        wallpaper.title = image.title;
+                        wallpaper.copyright = image.copyright;
+                        wallpaper.landscapeUrl = image.landscapeImage.asset;
+                        wallpaper.portraitUrl = image.portraitImage.asset;
                     }
-                    
-                    // 检查壁纸是否重复
-                    if (IsImageDuplicate(wallpaperDirectory, wallpaper.landscapeSha256))
-                    {
-                        continue;
-                    }
-                    isDuplicate = false;
 
                     // 构造元信息
                     string metadata = $"{wallpaper.title}\n{wallpaper.copyright}\n横向壁纸地址: {wallpaper.landscapeUrl}\n竖向壁纸地址: {wallpaper.portraitUrl}";
@@ -189,35 +180,6 @@ class Program
         if (!result)
         {
             throw new Exception("Failed to set wallpaper.");
-        }
-    }
-
-    // 检查壁纸是否重复
-    static bool IsImageDuplicate(string path, string sha256)
-    {
-        string[] images = Directory.GetFiles(path, "*.jpg", SearchOption.AllDirectories);
-
-        foreach (string image in images)
-        {
-            byte[] imageData = File.ReadAllBytes(image);
-            string imageSHA256 = GetSHA256(imageData);
-
-            if (imageSHA256.Equals(sha256, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // 获取文件SHA256
-    static string GetSHA256(byte[] data)
-    {
-        using (SHA256 sha256 = SHA256.Create())
-        {
-            byte[] hashBytes = sha256.ComputeHash(data);
-            return BitConverter.ToString(hashBytes).Replace("-", string.Empty);
         }
     }
 
